@@ -24,17 +24,22 @@
   ведущего: теория (Kafka + CI/CD), чек-лист диагностики по каждому багу,
   команды, плейбук «фикс → ретест» для обеих веток, тайминг на 90 минут.
 
-Оба файла закоммичены (`3660952`). Пока это **только документы** — кода
-сервисов, `docker-compose.yml`, GitHub Actions workflow, фиче-веток с
-багами ещё не существует.
+Оба файла закоммичены (`3660952`). Реализация по ним завершена и
+проверена: код `order-api` и `delivery-worker`, `docker-compose.yml`
+(Kafka KRaft + Kafka UI + Postgres + ELK), seed-скрипт БД, GitHub
+Actions workflow (lint+test на PR для обоих сервисов), а также ветки
+`feature/producer-bugs` (3 бага + fix-коммит) и `feature/consumer-bug`
+(1 баг + fix-коммит) — всё на месте и рабочее.
 
 ## Что дальше
 
-Реализация — через навык `writing-plans` (или прямой запрос "реализуй
-DESIGN.md"): нужно поднять `order-api`, `delivery-worker`,
-`docker-compose.yml`, seed-скрипт БД, GitHub Actions workflow, ветку
-`feature/producer-bugs` (3 бага + fix-коммит) и `feature/consumer-bug`
-(1 баг + fix-коммит) — всё по `docs/DESIGN.md`.
+Финальный ревью всей ветки `main` пройден, замечания устранены
+(healthcheck/restart-policy в docker-compose, синхронизация README/
+HANDOFF со статусом, документация ограничений `/admin/reset`,
+логирование consumer-ошибок, доп. тесты на переходы статусов). Проект
+готов к проведению занятия — из подготовки к живому созвону остаётся
+только заранее поднять стенд (`docker compose up --build -d`) и
+прогнать `docs/LESSON_PLAN.md` глазами ведущего.
 
 ## Важные ограничения, которые нельзя терять при реализации
 
