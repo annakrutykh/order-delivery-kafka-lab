@@ -4,9 +4,12 @@
 занятия), `docs/TESTER_TASKS.md` (задачи для тестировщика),
 `docs/KAFKA_TESTING_THEORY.md` (теория).
 
-Запросы к `order-api` — через **Swagger** (`http://localhost:8000/docs`,
-кнопка **Try it out** → вставить тело → **Execute**). Проверки — через
-терминал (Kafka, БД) и Kibana (браузер).
+**Инструменты:**
+- Запросы к API → **Swagger** (`http://localhost:8000/docs`, **Try it out** → тело → **Execute**)
+- Сообщения в Kafka → **Kafka UI** (`http://localhost:8081`)
+- Логи сервисов → **Kibana** (`http://localhost:5601`)
+- Записи в БД → **DBeaver**
+- Переключение веток и пересборка → терминал (для этого GUI не нужен)
 
 ## Доступы
 
@@ -23,14 +26,14 @@
 
 **Kibana data view:** index pattern `app-logs-*`, time field `@timestamp`.
 
-## Перед занятием
+## Перед занятием (терминал)
 
 ```bash
 docker compose ps
 ```
 Все сервисы — `Up` (kafka и postgres — ещё и `healthy`).
 
-## Если что-то пошло не так
+## Если что-то пошло не так (терминал)
 
 ```bash
 docker compose down -v && docker compose up --build -d
@@ -42,7 +45,7 @@ docker compose down -v && docker compose up --build -d
 
 PR: **https://github.com/annakrutykh/order-delivery-kafka-lab/pull/1**
 
-## 1. Подтянуть ветку с багом и пересобрать `order-api`
+## 1. Подтянуть ветку с багом и пересобрать (терминал)
 
 ```bash
 git fetch origin
@@ -52,7 +55,7 @@ git log --oneline -5
 docker compose up --build -d order-api
 ```
 
-## 2. Показать PR студентам
+## 2. Показать PR студентам (браузер)
 
 Открыть https://github.com/annakrutykh/order-delivery-kafka-lab/pull/1
 
@@ -66,7 +69,7 @@ docker compose up --build -d order-api
 
 ## 3. Баг 1 — дубль сообщения (обычный переход статуса)
 
-**В Swagger:**
+**Swagger:**
 
 1. `POST /orders` — тело:
    ```json
@@ -84,17 +87,15 @@ docker compose up --build -d order-api
    {"status": "READY_FOR_DELIVERY"}
    ```
 
-**В терминале** (подставить свой id вместо `<ID>`):
-```bash
-docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server localhost:9092 --topic order.status_changed \
-  --from-beginning --timeout-ms 8000 2>/dev/null | grep '"correlationId": "<ID>"'
+**Kafka UI:** топик `order.status_changed` → Messages → Search:
+```
+correlationId": "<id>"
 ```
 **Ожидание:** 1 сообщение. **Баг:** 2 одинаковых сообщения.
 
 ## 4. Баг 2 — битое сообщение (переход напрямую, минуя `IN_PROGRESS`)
 
-**В Swagger:**
+**Swagger:**
 
 1. `POST /orders` — тело:
    ```json
@@ -110,38 +111,34 @@ docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
 
 3. `GET /orders/{order_id}/delivery` — тот же `order_id`. **Ожидание:** `200` с данными. **Баг:** `404`.
 
-**В терминале:**
-```bash
-docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server localhost:9092 --topic order.status_changed \
-  --from-beginning --timeout-ms 8000 2>/dev/null | grep '"correlationId": "<ID>"'
-```
+**Kafka UI:** топик `order.status_changed` → Search `correlationId": "<id>"`.
 **Ожидание:** сообщение с полями `orderId`, `occurredAt`. **Баг:** этих полей нет.
 
-```bash
-docker compose logs delivery-worker --since 2m 2>&1 | grep '<ID>'
-```
-**Ожидание:** ничего. **Баг:** строка `ERROR ... failed to process message`.
+**Kibana:** Discover → фильтр `correlationId: "<id>"` → добавить колонку
+`name`. **Ожидание:** ничего от `delivery-worker`. **Баг:** строка
+`levelname: ERROR`, `message: failed to process message`.
 
 ## 5. Баг 3 — неполный батч (`dispatch-batch`)
 
-**В терминале, до вызова ручки:**
-```bash
-docker compose exec postgres psql -U orders_user -d orders_db \
-  -c "SELECT count(*) FROM orders WHERE status = 'READY_FOR_DELIVERY';"
+**DBeaver, до вызова ручки:**
+```sql
+SELECT count(*) FROM orders WHERE status = 'READY_FOR_DELIVERY';
 ```
 Запомнить число — это **N**.
 
-**В Swagger:** `POST /orders/dispatch-batch` (тело не нужно) → Execute → посмотреть `dispatchedCount` в ответе.
+**Swagger:** `POST /orders/dispatch-batch` (тело не нужно) → Execute →
+посмотреть `dispatchedCount` в ответе.
 
-**В терминале:**
-```bash
-docker compose logs order-api --since 1m 2>&1 | grep -c "dispatching order to"
-```
-**Ожидание:** `dispatchedCount` = N = число строк здесь.
-**Баг:** `dispatchedCount` = N (совпадает с БД), но строк здесь — N−1.
+**Kibana:** Discover → фильтр `message: "dispatch batch completed"` →
+раскрыть последнюю строку → сверить `dispatchedCount` с N.
 
-## 6. Запушить fix и подтянуть
+**Kafka UI:** топик `order.dispatch_requested` → Newest First → посчитать
+реальное число новых сообщений от этого вызова (по времени).
+
+**Ожидание:** `dispatchedCount` = N = число сообщений в Kafka.
+**Баг:** `dispatchedCount` = N (совпадает с БД), но сообщений в Kafka — N−1.
+
+## 6. Запушить fix и подтянуть (терминал)
 
 ```bash
 git push origin feature/producer-bugs
@@ -149,7 +146,7 @@ git pull
 docker compose up --build -d order-api
 ```
 
-## 7. Показать PR снова
+## 7. Показать PR снова (браузер)
 
 Обновить страницу https://github.com/annakrutykh/order-delivery-kafka-lab/pull/1
 
@@ -170,7 +167,7 @@ docker compose up --build -d order-api
 
 PR: **https://github.com/annakrutykh/order-delivery-kafka-lab/pull/2**
 
-## 1. Подтянуть ветку с багом и пересобрать `delivery-worker`
+## 1. Подтянуть ветку с багом и пересобрать (терминал)
 
 ```bash
 git fetch origin
@@ -180,7 +177,7 @@ git log --oneline -5
 docker compose up --build -d delivery-worker
 ```
 
-## 2. Показать PR студентам
+## 2. Показать PR студентам (браузер)
 
 Открыть https://github.com/annakrutykh/order-delivery-kafka-lab/pull/2
 
@@ -193,7 +190,7 @@ docker compose up --build -d delivery-worker
 
 ## 3. Баг 4 — дубль доставки после рестарта воркера
 
-**В терминале — рестарт сразу перед началом** (сбрасывает таймер автокоммита, сейчас 2 минуты):
+**Терминал — рестарт сразу перед началом** (сбрасывает таймер автокоммита, сейчас 2 минуты):
 ```bash
 docker compose restart delivery-worker
 ```
@@ -216,26 +213,25 @@ docker compose restart delivery-worker
    {"status": "READY_FOR_DELIVERY"}
    ```
 
-**В терминале, проверка «до»:**
-```bash
-docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server localhost:9092 --topic order.status_changed \
-  --from-beginning --timeout-ms 8000 2>/dev/null | grep -c '"correlationId": "<ID>"'
+**Проверка «до» — Kafka UI:** топик `order.status_changed` → Search
+`correlationId": "<id>"` → **1 сообщение**.
 
-docker compose exec postgres psql -U orders_user -d orders_db \
-  -c "SELECT * FROM deliveries WHERE order_id = <ID>;"
+**Проверка «до» — DBeaver:**
+```sql
+SELECT * FROM deliveries WHERE order_id = <id>;
 ```
-**Ожидание:** 1 сообщение, 1 запись.
+**1 запись.**
 
-**В терминале — рестарт «передеплоя»** (не позже ~1.5 минут после обработки):
+**Терминал — рестарт «передеплоя»** (не позже ~1.5 минут после обработки):
 ```bash
 docker compose restart delivery-worker
 ```
 
-Подождать 30-60 секунд, затем повторить те же две команды проверки.
-**Ожидание:** сообщений по-прежнему 1. **Баг:** записей в `deliveries` стало 2.
+Подождать 30-60 секунд, затем повторить обе проверки (Kafka UI и DBeaver).
+**Ожидание:** сообщений в Kafka по-прежнему 1. **Баг:** записей в
+`deliveries` стало 2.
 
-## 4. Запушить fix и подтянуть
+## 4. Запушить fix и подтянуть (терминал)
 
 ```bash
 git push origin feature/consumer-bug
@@ -243,7 +239,7 @@ git pull
 docker compose up --build -d delivery-worker
 ```
 
-## 5. Показать PR снова
+## 5. Показать PR снова (браузер)
 
 Обновить страницу https://github.com/annakrutykh/order-delivery-kafka-lab/pull/2
 
@@ -253,22 +249,22 @@ docker compose up --build -d delivery-worker
 ## 6. Ретест — баг 4 на новом заказе
 
 В Swagger создать новый заказ и провести до `READY_FOR_DELIVERY` (шаги как
-в п.3). Проверить в терминале (1 сообщение, 1 запись). Сделать
-`docker compose restart delivery-worker`, подождать 20-30 секунд, проверить
-`deliveries` для этого заказа снова — **ожидание теперь: по-прежнему 1**
-запись (спешить с таймингом больше не нужно — фикс не зависит от интервала
-автокоммита).
+в п.3). Проверить в DBeaver (1 запись). Сделать
+`docker compose restart delivery-worker` (терминал), подождать 20-30
+секунд, проверить `deliveries` в DBeaver снова — **ожидание теперь:
+по-прежнему 1** запись (спешить с таймингом больше не нужно — фикс не
+зависит от интервала автокоммита).
 
 ---
 
-# Справочно: где смотреть результат вручную (для студентов)
+# Справочно: KQL-фильтры и поиск (для студентов)
 
-**Kafka UI** (`localhost:8081`) → топик → Messages → поле Search:
+**Kafka UI:** поле Search в топике:
 ```
 correlationId": "<id>"
 ```
 
-**Kibana** (`localhost:5601`) → Discover → дата-вью → KQL-фильтр:
+**Kibana:** KQL-фильтр в Discover:
 ```
 correlationId: "<id>"
 ```
