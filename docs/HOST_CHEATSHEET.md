@@ -64,13 +64,15 @@ docker compose down -v && docker compose up --build -d
 
 PR: **https://github.com/annakrutykh/order-delivery-kafka-lab/pull/1**
 
-## 1. Подтянуть ветку с багом и пересобрать (терминал)
+## 1. Переключиться на коммит с багом и пересобрать (терминал)
+
+⚠️ **Именно на коммит `cd65998`, не на имя ветки** — fix уже лежит
+локально у тебя на компьютере поверх этого коммита (ты сама его готовила
+заранее), поэтому `git checkout feature/producer-bugs` (по имени ветки)
+сразу дал бы уже исправленный код, минуя баг.
 
 ```bash
-git fetch origin
-git checkout feature/producer-bugs
-git pull
-git log --oneline -5
+git checkout cd65998
 docker compose up --build -d order-api
 ```
 
@@ -157,13 +159,17 @@ SELECT count(*) FROM orders WHERE status = 'READY_FOR_DELIVERY';
 **Ожидание:** `dispatchedCount` = N = число сообщений в Kafka.
 **Баг:** `dispatchedCount` = N (совпадает с БД), но сообщений в Kafka — N−1.
 
-## 6. Запушить fix и подтянуть (терминал)
+## 6. Запушить fix (терминал)
 
 ```bash
 git push origin feature/producer-bugs
-git pull
+git checkout feature/producer-bugs
 docker compose up --build -d order-api
 ```
+(Первая команда пушит локальную ветку с фиксом на GitHub — сработает и
+из detached HEAD, где мы сейчас после шага 1. Вторая — переключает тебя с
+detached HEAD обратно на саму ветку, `git pull` тут не нужен: локально
+уже есть всё, что только что запушили.)
 
 ## 7. Показать PR снова (браузер)
 
@@ -186,13 +192,15 @@ docker compose up --build -d order-api
 
 PR: **https://github.com/annakrutykh/order-delivery-kafka-lab/pull/2**
 
-## 1. Подтянуть ветку с багом и пересобрать (терминал)
+## 1. Переключиться на коммит с багом и пересобрать (терминал)
+
+⚠️ **Именно на коммит `6c37d95`, не на имя ветки** — fix уже лежит
+локально у тебя на компьютере поверх этого коммита, поэтому
+`git checkout feature/consumer-bug` (по имени ветки) сразу дал бы уже
+исправленный код, минуя баг.
 
 ```bash
-git fetch origin
-git checkout feature/consumer-bug
-git pull
-git log --oneline -5
+git checkout 6c37d95
 docker compose up --build -d delivery-worker
 ```
 
@@ -250,13 +258,16 @@ docker compose restart delivery-worker
 **Ожидание:** сообщений в Kafka по-прежнему 1. **Баг:** записей в
 `deliveries` стало 2.
 
-## 4. Запушить fix и подтянуть (терминал)
+## 4. Запушить fix (терминал)
 
 ```bash
 git push origin feature/consumer-bug
-git pull
+git checkout feature/consumer-bug
 docker compose up --build -d delivery-worker
 ```
+(Первая команда сработает и из detached HEAD. Вторая переводит тебя с
+detached HEAD обратно на ветку — `git pull` не нужен, локально уже всё
+есть.)
 
 ## 5. Показать PR снова (браузер)
 
