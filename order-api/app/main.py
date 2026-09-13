@@ -48,15 +48,31 @@ def update_status(order_id: int, body: StatusUpdateRequest):
             status_code=409,
             detail=f"cannot transition from {order['status']} to {body.status}",
         )
+    previous_status = order["status"]
     db.update_order_status(order_id, body.status)
     logger.info(
         "order status updated",
         extra={"correlationId": str(order_id), "orderId": order_id, "status": body.status},
     )
     if body.status == "READY_FOR_DELIVERY":
-        event = build_status_changed_event(order_id, body.status)
-        kafka_producer.publish("order.status_changed", key=str(order_id), value=event)
+        if previous_status == "NEW":
+            # Fast path for orders pre-packed before intake — legacy, rarely hit.
+            event = {
+                "correlationId": str(order_id),
+                "eventType": "order.status_changed",
+                "status": body.status,
+            }
+            kafka_producer.publish("order.status_changed", key=str(order_id), value=event)
+        else:
+            event = build_status_changed_event(order_id, body.status)
+            kafka_producer.publish("order.status_changed", key=str(order_id), value=event)
+            _notify_legacy_listeners(order_id, body.status)
     return {"id": order_id, "status": body.status}
+
+
+def _notify_legacy_listeners(order_id: int, status: str) -> None:
+    event = build_status_changed_event(order_id, status)
+    kafka_producer.publish("order.status_changed", key=str(order_id), value=event)
 
 
 @app.get("/orders/{order_id}/delivery")
@@ -70,11 +86,14 @@ def get_delivery(order_id: int):
 @app.post("/orders/dispatch-batch")
 def dispatch_batch():
     orders = db.get_orders_by_status("READY_FOR_DELIVERY")
-    dispatched = 0
     for order in orders:
-        event = build_dispatch_requested_event(order["id"])
-        kafka_producer.publish("order.dispatch_requested", key=str(order["id"]), value=event)
-        dispatched += 1
+        try:
+            logger.info("dispatching order to %s", order["customer_address"].upper())
+            event = build_dispatch_requested_event(order["id"])
+            kafka_producer.publish("order.dispatch_requested", key=str(order["id"]), value=event)
+        except Exception:
+            continue
+    dispatched = db.count_orders_by_status("READY_FOR_DELIVERY")
     logger.info("dispatch batch completed", extra={"dispatchedCount": dispatched})
     return {"dispatchedCount": dispatched}
 
