@@ -47,7 +47,10 @@ def run() -> None:
     try:
         while True:
             msg = consumer.poll(1.0)
-            if msg is None or msg.error():
+            if msg is None:
+                continue
+            if msg.error():
+                logger.warning("consumer error", extra={"kafkaError": str(msg.error())})
                 continue
             try:
                 handle_message(msg.value())

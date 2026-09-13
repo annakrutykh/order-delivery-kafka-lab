@@ -33,6 +33,18 @@ def test_unknown_target_status_is_invalid():
     assert is_valid_transition("NEW", "CANCELLED") is False
 
 
+def test_same_status_reset_is_invalid():
+    assert is_valid_transition("READY_FOR_DELIVERY", "READY_FOR_DELIVERY") is False
+
+
+def test_new_to_delivered_is_invalid_illegal_jump():
+    assert is_valid_transition("NEW", "DELIVERED") is False
+
+
+def test_unknown_current_status_is_invalid():
+    assert is_valid_transition("BOGUS", "NEW") is False
+
+
 def test_build_status_changed_event_shape():
     event = build_status_changed_event(42, "READY_FOR_DELIVERY")
     assert event["correlationId"] == "42"
