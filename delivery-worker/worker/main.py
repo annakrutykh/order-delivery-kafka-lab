@@ -39,8 +39,7 @@ def run() -> None:
         {
             "bootstrap.servers": os.environ["KAFKA_BOOTSTRAP_SERVERS"],
             "group.id": "delivery-worker",
-            "enable.auto.commit": True,
-            "auto.commit.interval.ms": 120000,
+            "enable.auto.commit": False,
             "auto.offset.reset": "earliest",
         }
     )
@@ -57,6 +56,7 @@ def run() -> None:
                     "failed to process message",
                     extra={"correlationId": _safe_correlation_id(msg.value())},
                 )
+            consumer.commit(msg)
     finally:
         consumer.close()
 
